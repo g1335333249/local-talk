@@ -81,7 +81,6 @@
             <button id="formatCode" type="button" title="代码">`</button>
             <button id="formatLink" type="button" title="链接">链接</button>
           </div>
-          <div id="markdownDraftPreview" class="markdown-draft-preview" hidden></div>
           <div class="toolbar">
             <label class="icon-button" title="发送文件">
               <input id="fileInput" type="file" hidden />
@@ -89,7 +88,7 @@
             </label>
             <button id="screenshotButton" type="button" class="icon-button" title="截屏">▣</button>
           </div>
-          <textarea id="messageInput" rows="2" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <div id="messageInput" class="message-editor" contenteditable="true" data-placeholder="输入消息，Enter 发送，Shift+Enter 换行"></div>
           <button type="submit" class="send-button">发送</button>
         </form>
       </section>

@@ -53,7 +53,6 @@ const els = {
   formatItalic: document.querySelector("#formatItalic"),
   formatCode: document.querySelector("#formatCode"),
   formatLink: document.querySelector("#formatLink"),
-  markdownDraftPreview: document.querySelector("#markdownDraftPreview"),
   messageInput: document.querySelector("#messageInput"),
   fileInput: document.querySelector("#fileInput"),
   screenshotButton: document.querySelector("#screenshotButton"),
@@ -726,15 +725,6 @@ function renderMarkdown(text) {
   return wrapper;
 }
 
-function renderMarkdownDraft() {
-  const text = els.messageInput.value.trim();
-  els.markdownDraftPreview.replaceChildren();
-  els.markdownDraftPreview.hidden = text.length === 0;
-  if (text.length > 0) {
-    els.markdownDraftPreview.append(renderMarkdown(text));
-  }
-}
-
 function createQuoteBlock(quote) {
   const block = document.createElement("div");
   block.className = "quote-block";
@@ -1094,30 +1084,101 @@ function sendTextMessage(text, quote = state.replyTo) {
   });
 }
 
-function insertMarkdown(prefix, suffix = prefix, placeholder = "文本") {
-  const input = els.messageInput;
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
-  const selected = input.value.slice(start, end) || placeholder;
-  const next = `${input.value.slice(0, start)}${prefix}${selected}${suffix}${input.value.slice(end)}`;
-  input.value = next;
-  const cursorStart = start + prefix.length;
-  const cursorEnd = cursorStart + selected.length;
-  input.focus();
-  input.setSelectionRange(cursorStart, cursorEnd);
-  renderMarkdownDraft();
+function focusEditorAtEnd() {
+  els.messageInput.focus();
+  const range = document.createRange();
+  range.selectNodeContents(els.messageInput);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function selectedEditorText() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !els.messageInput.contains(selection.anchorNode)) {
+    return "";
+  }
+  return selection.toString();
+}
+
+function replaceEditorSelection(node) {
+  els.messageInput.focus();
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !els.messageInput.contains(selection.anchorNode)) {
+    els.messageInput.append(node);
+    focusEditorAtEnd();
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function applyInlineFormat(tagName, placeholder) {
+  const selected = selectedEditorText() || placeholder;
+  const node = document.createElement(tagName);
+  node.textContent = selected;
+  replaceEditorSelection(node);
 }
 
 function insertMarkdownLink() {
-  const input = els.messageInput;
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
-  const selected = input.value.slice(start, end) || "链接文本";
-  const snippet = `[${selected}](https://)`;
-  input.value = `${input.value.slice(0, start)}${snippet}${input.value.slice(end)}`;
-  input.focus();
-  input.setSelectionRange(start + snippet.length - 1, start + snippet.length - 1);
-  renderMarkdownDraft();
+  const selected = selectedEditorText() || "链接文本";
+  const link = document.createElement("a");
+  link.textContent = selected;
+  link.href = "https://";
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  replaceEditorSelection(link);
+}
+
+function nodeMarkdown(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+  const element = node;
+  const tag = element.tagName.toLowerCase();
+  const content = [...element.childNodes].map(nodeMarkdown).join("");
+
+  if (tag === "br") return "\n";
+  if (tag === "strong" || tag === "b") return `**${content}**`;
+  if (tag === "em" || tag === "i") return `*${content}*`;
+  if (tag === "code") return element.closest("pre") ? content : `\`${content}\``;
+  if (tag === "a") return `[${content}](${element.getAttribute("href") || ""})`;
+  if (tag === "blockquote") return `> ${content.trim()}\n`;
+  if (tag === "pre") return `\`\`\`\n${element.textContent || ""}\n\`\`\`\n`;
+  if (tag === "h4") return `# ${content}\n`;
+  if (tag === "h5") return `## ${content}\n`;
+  if (tag === "h6") return `### ${content}\n`;
+  if (element.classList.contains("markdown-list-item")) {
+    const spans = [...element.querySelectorAll(":scope > span")];
+    return `- ${nodeMarkdown(spans[1] || element).trim()}\n`;
+  }
+  if (tag === "div" || tag === "p") return `${content}\n`;
+  return content;
+}
+
+function editorMarkdown() {
+  return [...els.messageInput.childNodes].map(nodeMarkdown).join("").trim();
+}
+
+function clearEditor() {
+  els.messageInput.replaceChildren();
+}
+
+function maybeRenderEditorMarkdown() {
+  const text = els.messageInput.textContent || "";
+  const hasMarkdownSyntax = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(^|\n)(#{1,3}\s+|>\s+|[-*]\s+)/.test(text);
+  if (!hasMarkdownSyntax) return;
+
+  const rendered = renderMarkdown(text);
+  els.messageInput.replaceChildren(...rendered.childNodes);
+  focusEditorAtEnd();
 }
 
 async function captureScreenshot() {
@@ -1190,7 +1251,15 @@ async function uploadPastedImages(event) {
     }
   }
 
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    const text = event.clipboardData.getData("text/plain");
+    if (text) {
+      event.preventDefault();
+      replaceEditorSelection(document.createTextNode(text));
+      maybeRenderEditorMarkdown();
+    }
+    return;
+  }
   event.preventDefault();
 
   for (const file of files) {
@@ -1275,22 +1344,21 @@ els.closeGuardModal.addEventListener("click", (event) => {
 
 els.cancelReply.addEventListener("click", clearReply);
 
-els.formatBold.addEventListener("click", () => insertMarkdown("**", "**", "加粗文本"));
+els.formatBold.addEventListener("click", () => applyInlineFormat("strong", "加粗文本"));
 
-els.formatItalic.addEventListener("click", () => insertMarkdown("*", "*", "斜体文本"));
+els.formatItalic.addEventListener("click", () => applyInlineFormat("em", "斜体文本"));
 
-els.formatCode.addEventListener("click", () => insertMarkdown("`", "`", "code"));
+els.formatCode.addEventListener("click", () => applyInlineFormat("code", "code"));
 
 els.formatLink.addEventListener("click", insertMarkdownLink);
 
 els.composer.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const text = els.messageInput.value.trim();
+  const text = editorMarkdown();
   const attachments = [...state.pendingAttachments];
   if ((!text && attachments.length === 0) || !state.selectedIp) return;
   const quote = state.replyTo;
-  els.messageInput.value = "";
-  renderMarkdownDraft();
+  clearEditor();
   clearPendingAttachments();
   clearReply();
 
@@ -1311,7 +1379,7 @@ els.messageInput.addEventListener("keydown", (event) => {
   }
 });
 
-els.messageInput.addEventListener("input", renderMarkdownDraft);
+els.messageInput.addEventListener("input", maybeRenderEditorMarkdown);
 
 els.messageInput.addEventListener("paste", uploadPastedImages);
 
