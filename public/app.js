@@ -12,6 +12,7 @@ const state = {
   messages: [],
   unreadIps: new Set(),
   replyTo: null,
+  pendingAttachments: [],
   forwardingMessage: null,
   titleFlashTimer: null,
   titleFlashOn: false,
@@ -47,6 +48,7 @@ const els = {
   replyBar: document.querySelector("#replyBar"),
   replyTitle: document.querySelector("#replyTitle"),
   cancelReply: document.querySelector("#cancelReply"),
+  attachmentTray: document.querySelector("#attachmentTray"),
   messageInput: document.querySelector("#messageInput"),
   fileInput: document.querySelector("#fileInput"),
   screenshotButton: document.querySelector("#screenshotButton"),
@@ -375,6 +377,70 @@ function setReply(message) {
 function clearReply() {
   state.replyTo = null;
   if (els.replyBar) els.replyBar.hidden = true;
+}
+
+function addPendingAttachment(file, kind = "file") {
+  const attachment = {
+    id: crypto.randomUUID(),
+    file,
+    kind,
+    previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : ""
+  };
+  state.pendingAttachments.push(attachment);
+  renderPendingAttachments();
+}
+
+function removePendingAttachment(id) {
+  const attachment = state.pendingAttachments.find((item) => item.id === id);
+  if (attachment && attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+  state.pendingAttachments = state.pendingAttachments.filter((item) => item.id !== id);
+  renderPendingAttachments();
+}
+
+function clearPendingAttachments() {
+  for (const attachment of state.pendingAttachments) {
+    if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+  }
+  state.pendingAttachments = [];
+  renderPendingAttachments();
+}
+
+function renderPendingAttachments() {
+  els.attachmentTray.replaceChildren();
+  els.attachmentTray.hidden = state.pendingAttachments.length === 0;
+
+  for (const attachment of state.pendingAttachments) {
+    const chip = document.createElement("div");
+    chip.className = "attachment-chip";
+
+    if (attachment.previewUrl) {
+      const img = document.createElement("img");
+      img.src = attachment.previewUrl;
+      img.alt = attachment.file.name;
+      chip.append(img);
+    } else {
+      const icon = document.createElement("div");
+      icon.className = "attachment-icon";
+      icon.textContent = "FILE";
+      chip.append(icon);
+    }
+
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = attachment.file.name;
+    const size = document.createElement("span");
+    size.textContent = formatSize(attachment.file.size);
+    info.append(name, size);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.title = "移除附件";
+    remove.textContent = "×";
+    remove.addEventListener("click", () => removePendingAttachment(attachment.id));
+
+    chip.append(info, remove);
+    els.attachmentTray.append(chip);
+  }
 }
 
 function firstUnreadIp() {
@@ -851,13 +917,13 @@ function addMessage(message) {
   renderChatHeader();
 }
 
-async function uploadFile(file, kind = "file") {
+async function uploadFile(file, kind = "file", quote = state.replyTo) {
   if (!state.selectedIp || !file) return;
   const body = new FormData();
   body.append("toIp", state.selectedIp);
   body.append("kind", kind);
-  if (state.replyTo) {
-    body.append("quote", JSON.stringify(state.replyTo));
+  if (quote) {
+    body.append("quote", JSON.stringify(quote));
   }
   body.append("file", file);
 
@@ -869,9 +935,19 @@ async function uploadFile(file, kind = "file") {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "上传失败" }));
     alert(error.error || "上传失败");
-  } else {
-    clearReply();
   }
+}
+
+function sendTextMessage(text, quote = state.replyTo) {
+  return new Promise((resolve, reject) => {
+    socket.emit("message:send", { toIp: state.selectedIp, text, quote }, (response) => {
+      if (response && response.error) {
+        reject(new Error(response.error));
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 async function captureScreenshot() {
@@ -896,7 +972,7 @@ async function captureScreenshot() {
   canvas.toBlob((blob) => {
     if (!blob) return;
     const file = new File([blob], `screenshot-${Date.now()}.png`, { type: "image/png" });
-    uploadFile(file, "screenshot");
+    addPendingAttachment(file, "screenshot");
   }, "image/png");
 }
 
@@ -950,7 +1026,7 @@ async function uploadPastedImages(event) {
   for (const file of files) {
     const ext = file.type.split("/")[1] || "png";
     const namedFile = new File([file], `paste-${Date.now()}.${ext}`, { type: file.type });
-    await uploadFile(namedFile, "screenshot");
+    addPendingAttachment(namedFile, "screenshot");
   }
 }
 
@@ -1029,13 +1105,24 @@ els.closeGuardModal.addEventListener("click", (event) => {
 
 els.cancelReply.addEventListener("click", clearReply);
 
-els.composer.addEventListener("submit", (event) => {
+els.composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = els.messageInput.value.trim();
-  if (!text || !state.selectedIp) return;
-  socket.emit("message:send", { toIp: state.selectedIp, text, quote: state.replyTo });
+  const attachments = [...state.pendingAttachments];
+  if ((!text && attachments.length === 0) || !state.selectedIp) return;
+  const quote = state.replyTo;
   els.messageInput.value = "";
+  clearPendingAttachments();
   clearReply();
+
+  try {
+    if (text) await sendTextMessage(text, quote);
+    for (const attachment of attachments) {
+      await uploadFile(attachment.file, attachment.kind, quote);
+    }
+  } catch (error) {
+    alert(error.message || "发送失败");
+  }
 });
 
 els.messageInput.addEventListener("keydown", (event) => {
@@ -1048,7 +1135,9 @@ els.messageInput.addEventListener("keydown", (event) => {
 els.messageInput.addEventListener("paste", uploadPastedImages);
 
 els.fileInput.addEventListener("change", () => {
-  uploadFile(els.fileInput.files[0]);
+  if (els.fileInput.files[0]) {
+    addPendingAttachment(els.fileInput.files[0], "file");
+  }
   els.fileInput.value = "";
 });
 

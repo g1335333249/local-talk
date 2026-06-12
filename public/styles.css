@@ -671,6 +671,65 @@ textarea {
   cursor: pointer;
 }
 
+.attachment-tray {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.attachment-chip {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: min(280px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfb;
+  padding: 7px;
+}
+
+.attachment-chip img,
+.attachment-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #e4f3f0;
+}
+
+.attachment-icon {
+  display: grid;
+  place-items: center;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.attachment-chip strong,
+.attachment-chip span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.attachment-chip button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+
 .toolbar {
   display: flex;
   gap: 6px;
