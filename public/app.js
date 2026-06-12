@@ -43,6 +43,8 @@ const els = {
   incomingBanner: document.querySelector("#incomingBanner"),
   emptyState: document.querySelector("#emptyState"),
   incomingNotice: document.querySelector("#incomingNotice"),
+  chatPanel: document.querySelector("#chatPanel"),
+  dropOverlay: document.querySelector("#dropOverlay"),
   messageList: document.querySelector("#messageList"),
   composer: document.querySelector("#composer"),
   replyBar: document.querySelector("#replyBar"),
@@ -358,6 +360,7 @@ function renderChatHeader() {
   els.messageList.hidden = !hasPeer;
   els.composer.hidden = !hasPeer;
   els.pasteHint.hidden = !hasPeer;
+  if (!hasPeer) showDropOverlay(false);
   if (!hasPeer) clearReply();
   renderReplyBar();
   renderUnreadPrompts();
@@ -392,6 +395,26 @@ function addPendingAttachment(file, kind = "file") {
   };
   state.pendingAttachments.push(attachment);
   renderPendingAttachments();
+}
+
+function eventHasFiles(event) {
+  return Boolean(event.dataTransfer && [...event.dataTransfer.types].includes("Files"));
+}
+
+function showDropOverlay(show) {
+  if (!els.dropOverlay || !state.selectedIp) return;
+  els.dropOverlay.hidden = !show;
+  els.chatPanel.classList.toggle("dragging-file", show);
+}
+
+function addDroppedFiles(files) {
+  if (!state.selectedIp) return;
+  for (const file of files) {
+    addPendingAttachment(file, file.type.startsWith("image/") ? "screenshot" : "file");
+  }
+  if (files.length > 0) {
+    els.messageInput.focus();
+  }
 }
 
 function removePendingAttachment(id) {
@@ -1284,6 +1307,31 @@ els.sidebarToggle.addEventListener("click", () => {
 
 els.sidebarOverlay.addEventListener("click", () => {
   setSidebarOpen(false);
+});
+
+els.chatPanel.addEventListener("dragenter", (event) => {
+  if (!eventHasFiles(event) || !state.selectedIp) return;
+  event.preventDefault();
+  showDropOverlay(true);
+});
+
+els.chatPanel.addEventListener("dragover", (event) => {
+  if (!eventHasFiles(event) || !state.selectedIp) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  showDropOverlay(true);
+});
+
+els.chatPanel.addEventListener("dragleave", (event) => {
+  if (els.chatPanel.contains(event.relatedTarget)) return;
+  showDropOverlay(false);
+});
+
+els.chatPanel.addEventListener("drop", (event) => {
+  if (!eventHasFiles(event) || !state.selectedIp) return;
+  event.preventDefault();
+  showDropOverlay(false);
+  addDroppedFiles([...event.dataTransfer.files]);
 });
 
 window.addEventListener("resize", () => {

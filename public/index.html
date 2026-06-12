@@ -46,7 +46,7 @@
         </section>
       </aside>
 
-      <section class="chat">
+      <section id="chatPanel" class="chat">
         <header class="chat-header">
           <button id="sidebarToggle" class="contacts-button" type="button" title="联系人" aria-expanded="false">☰</button>
           <div>
@@ -89,6 +89,7 @@
           <div id="messageInput" class="message-editor" contenteditable="true" data-placeholder="输入消息，Enter 发送，Shift+Enter 换行"></div>
           <button type="submit" class="send-button">发送</button>
         </form>
+        <div id="dropOverlay" class="drop-overlay" hidden>释放鼠标添加文件</div>
       </section>
     </main>
 
