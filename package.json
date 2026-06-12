@@ -1,6 +1,6 @@
 {
   "name": "local-talk",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "LAN web chat with IP-based users, private messaging, files, and screenshots.",
   "license": "Apache-2.0",

@@ -2,7 +2,7 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache antiword
+RUN apk add --no-cache antiword libreoffice font-noto-cjk
 
 COPY package*.json ./
 RUN npm install --omit=dev

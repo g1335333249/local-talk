@@ -24,6 +24,7 @@ const PORT = Number(process.env.PORT || 3000);
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 200);
 const uploadsDir = path.join(__dirname, "..", "uploads");
 const dataDir = path.join(__dirname, "..", "data");
+const previewDir = path.join(dataDir, "previews");
 const dbPath = path.join(dataDir, "local-talk.sqlite");
 const GROUP_ID = "__local_group__";
 const CUSTOM_GROUP_PREFIX = "group:";
@@ -35,6 +36,7 @@ if (process.env.TRUST_PROXY === "true") {
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
+fs.mkdirSync(previewDir, { recursive: true });
 
 const db = new DatabaseSync(dbPath);
 db.exec(`
@@ -154,6 +156,12 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/uploads", express.static(uploadsDir, {
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
+  }
+}));
+app.use("/previews", express.static(previewDir, {
+  setHeaders: (res) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", "application/pdf");
   }
 }));
 
@@ -453,6 +461,49 @@ async function readDocPreview(filePath) {
   return stdout.slice(0, 100000);
 }
 
+function previewCacheName(filename, filePath) {
+  const stat = fs.statSync(filePath);
+  const hash = crypto
+    .createHash("sha1")
+    .update(`${filename}:${stat.size}:${stat.mtimeMs}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `${hash}.pdf`;
+}
+
+async function convertWordToPdf(filename, filePath) {
+  const cachedName = previewCacheName(filename, filePath);
+  const cachedPath = path.join(previewDir, cachedName);
+  if (fs.existsSync(cachedPath)) return cachedName;
+
+  const before = new Set(fs.readdirSync(previewDir));
+  await execFileAsync("soffice", [
+    "--headless",
+    "--nologo",
+    "--nofirststartwizard",
+    "--convert-to",
+    "pdf",
+    "--outdir",
+    previewDir,
+    filePath
+  ], {
+    timeout: 60000,
+    maxBuffer: 1024 * 1024
+  });
+
+  const generated = fs.readdirSync(previewDir)
+    .filter((name) => name.toLowerCase().endsWith(".pdf") && !before.has(name))
+    .map((name) => path.join(previewDir, name))
+    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs)[0];
+
+  if (!generated || !fs.existsSync(generated)) {
+    throw new Error("Word PDF preview was not generated");
+  }
+
+  fs.renameSync(generated, cachedPath);
+  return cachedName;
+}
+
 app.get("/api/preview/:filename", async (req, res) => {
   const filename = path.basename(req.params.filename || "");
   const filePath = uploadedFilePath(filename);
@@ -475,6 +526,18 @@ app.get("/api/preview/:filename", async (req, res) => {
     }
 
     if (ext === ".docx") {
+      try {
+        const pdfName = await convertWordToPdf(filename, filePath);
+        res.json({
+          kind: "pdf",
+          name: filename,
+          url: `/previews/${encodeURIComponent(pdfName)}`
+        });
+        return;
+      } catch (error) {
+        console.warn("LibreOffice docx preview failed, falling back to HTML:", error.message);
+      }
+
       const result = await mammoth.convertToHtml(
         { path: filePath },
         {
@@ -486,13 +549,25 @@ app.get("/api/preview/:filename", async (req, res) => {
       res.json({
         kind: "html",
         name: filename,
-        html: result.value.slice(0, 500000),
+        html: result.value,
         warnings: result.messages.map((message) => message.message)
       });
       return;
     }
 
     if (ext === ".doc") {
+      try {
+        const pdfName = await convertWordToPdf(filename, filePath);
+        res.json({
+          kind: "pdf",
+          name: filename,
+          url: `/previews/${encodeURIComponent(pdfName)}`
+        });
+        return;
+      } catch (error) {
+        console.warn("LibreOffice doc preview failed, falling back to text:", error.message);
+      }
+
       const text = await readDocPreview(filePath);
       res.json({
         kind: "text",
