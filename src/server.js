@@ -5,7 +5,9 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 
 const express = require("express");
+const mammoth = require("mammoth");
 const multer = require("multer");
+const readXlsxFile = require("read-excel-file/node");
 const { Server } = require("socket.io");
 
 const app = express();
@@ -389,6 +391,67 @@ app.get("/api/messages/:peerIp", (req, res) => {
     }
   }
   res.json(messagesForTarget(me.ip, peerIp));
+});
+
+function uploadedFilePath(filename) {
+  const safeName = path.basename(filename || "");
+  const filePath = path.join(uploadsDir, safeName);
+  if (!filePath.startsWith(uploadsDir + path.sep)) return null;
+  return filePath;
+}
+
+app.get("/api/preview/:filename", async (req, res) => {
+  const filename = path.basename(req.params.filename || "");
+  const filePath = uploadedFilePath(filename);
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    res.status(404).json({ error: "file not found" });
+    return;
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+
+  try {
+    if (ext === ".pdf") {
+      res.json({
+        kind: "pdf",
+        name: filename,
+        url: `/uploads/${encodeURIComponent(filename)}`
+      });
+      return;
+    }
+
+    if (ext === ".docx") {
+      const result = await mammoth.extractRawText({ path: filePath });
+      res.json({
+        kind: "text",
+        name: filename,
+        text: result.value.slice(0, 100000),
+        warnings: result.messages.map((message) => message.message)
+      });
+      return;
+    }
+
+    if (ext === ".xlsx") {
+      const rows = await readXlsxFile(filePath);
+      res.json({
+        kind: "spreadsheet",
+        name: filename,
+        rows: rows.slice(0, 50).map((row) => row.slice(0, 20))
+      });
+      return;
+    }
+
+    if ([".txt", ".md", ".csv", ".log"].includes(ext)) {
+      const text = fs.readFileSync(filePath, "utf8").slice(0, 100000);
+      res.json({ kind: "text", name: filename, text, warnings: [] });
+      return;
+    }
+
+    res.status(415).json({ error: "preview not supported" });
+  } catch (error) {
+    res.status(500).json({ error: "preview failed" });
+  }
 });
 
 app.post("/api/upload", upload.single("file"), (req, res) => {

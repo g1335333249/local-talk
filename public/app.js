@@ -59,6 +59,10 @@ const els = {
   imageZoomReset: document.querySelector("#imageZoomReset"),
   imageZoomIn: document.querySelector("#imageZoomIn"),
   imageClose: document.querySelector("#imageClose"),
+  filePreviewModal: document.querySelector("#filePreviewModal"),
+  filePreviewTitle: document.querySelector("#filePreviewTitle"),
+  filePreviewClose: document.querySelector("#filePreviewClose"),
+  filePreviewBody: document.querySelector("#filePreviewBody"),
   forwardModal: document.querySelector("#forwardModal"),
   forwardClose: document.querySelector("#forwardClose"),
   forwardPreview: document.querySelector("#forwardPreview"),
@@ -480,12 +484,23 @@ function renderMessages() {
       const size = document.createElement("span");
       size.textContent = formatSize(message.file.size);
       info.append(name, size);
+      const actions = document.createElement("div");
+      actions.className = "file-card-actions";
+      if (canPreviewFile(message.file)) {
+        const preview = document.createElement("button");
+        preview.className = "preview-button";
+        preview.type = "button";
+        preview.textContent = "预览";
+        preview.addEventListener("click", () => openFilePreview(message.file));
+        actions.append(preview);
+      }
       const download = document.createElement("a");
       download.className = "download-button";
       download.href = message.file.url;
       download.download = message.file.originalName;
       download.textContent = "下载";
-      card.append(info, download);
+      actions.append(download);
+      card.append(info, actions);
       bubble.append(card);
     }
 
@@ -585,6 +600,78 @@ function openImageModal(file) {
 function closeImageModal() {
   els.imageModal.hidden = true;
   els.imagePreview.removeAttribute("src");
+}
+
+function fileExtension(file) {
+  const name = (file && file.originalName) || "";
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index).toLowerCase() : "";
+}
+
+function canPreviewFile(file) {
+  return [".pdf", ".docx", ".xlsx", ".txt", ".md", ".csv", ".log"].includes(fileExtension(file));
+}
+
+function uploadFilenameFromUrl(url) {
+  return String(url || "").split("/").pop();
+}
+
+async function openFilePreview(file) {
+  els.filePreviewTitle.textContent = file.originalName || "文件预览";
+  els.filePreviewBody.replaceChildren();
+  els.filePreviewBody.classList.remove("file-preview-empty");
+  els.filePreviewBody.textContent = "正在生成预览...";
+  els.filePreviewModal.hidden = false;
+
+  const filename = uploadFilenameFromUrl(file.url);
+  const response = await fetch(`/api/preview/${filename}`);
+  if (!response.ok) {
+    els.filePreviewBody.classList.add("file-preview-empty");
+    els.filePreviewBody.textContent = "当前文件暂不支持预览，请下载后查看。";
+    return;
+  }
+
+  const preview = await response.json();
+  els.filePreviewTitle.textContent = preview.name || file.originalName || "文件预览";
+  els.filePreviewBody.replaceChildren();
+
+  if (preview.kind === "pdf") {
+    const frame = document.createElement("iframe");
+    frame.src = preview.url;
+    frame.title = preview.name || "PDF 预览";
+    els.filePreviewBody.append(frame);
+    return;
+  }
+
+  if (preview.kind === "spreadsheet") {
+    if (!preview.rows || preview.rows.length === 0) {
+      els.filePreviewBody.classList.add("file-preview-empty");
+      els.filePreviewBody.textContent = "表格为空。";
+      return;
+    }
+    const table = document.createElement("table");
+    table.className = "file-preview-table";
+    for (const row of preview.rows) {
+      const tr = document.createElement("tr");
+      for (const cell of row) {
+        const td = document.createElement("td");
+        td.textContent = cell == null ? "" : String(cell);
+        tr.append(td);
+      }
+      table.append(tr);
+    }
+    els.filePreviewBody.append(table);
+    return;
+  }
+
+  const pre = document.createElement("pre");
+  pre.textContent = preview.text || "没有可预览文本。";
+  els.filePreviewBody.append(pre);
+}
+
+function closeFilePreview() {
+  els.filePreviewModal.hidden = true;
+  els.filePreviewBody.replaceChildren();
 }
 
 function openForwardModal(message) {
@@ -987,6 +1074,14 @@ els.imageZoomIn.addEventListener("click", () => {
 
 els.imageClose.addEventListener("click", closeImageModal);
 
+els.filePreviewClose.addEventListener("click", closeFilePreview);
+
+els.filePreviewModal.addEventListener("click", (event) => {
+  if (event.target === els.filePreviewModal) {
+    closeFilePreview();
+  }
+});
+
 els.forwardClose.addEventListener("click", closeForwardModal);
 
 els.forwardModal.addEventListener("click", (event) => {
@@ -1018,6 +1113,8 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && !els.imageModal.hidden) {
     closeImageModal();
+  } else if (event.key === "Escape" && !els.filePreviewModal.hidden) {
+    closeFilePreview();
   } else if (event.key === "Escape" && !els.forwardModal.hidden) {
     closeForwardModal();
   } else if (event.key === "Escape" && !els.groupModal.hidden) {
