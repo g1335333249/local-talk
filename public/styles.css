@@ -737,9 +737,11 @@ textarea {
   gap: 6px;
 }
 
-.format-toolbar button {
+.format-toolbar button,
+.format-toolbar .icon-button {
   min-width: 32px;
   height: 30px;
+  width: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: white;
@@ -748,13 +750,9 @@ textarea {
   font-weight: 700;
 }
 
-.format-toolbar button:hover {
+.format-toolbar button:hover,
+.format-toolbar .icon-button:hover {
   background: var(--panel-strong);
-}
-
-.toolbar {
-  display: flex;
-  gap: 6px;
 }
 
 .icon-button {
