@@ -1,7 +1,9 @@
 const crypto = require("crypto");
+const { execFile } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { promisify } = require("util");
 const { DatabaseSync } = require("node:sqlite");
 
 const express = require("express");
@@ -16,6 +18,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   maxHttpBufferSize: 25 * 1024 * 1024
 });
+const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT || 3000);
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 200);
@@ -443,6 +446,13 @@ function readExcelPreview(filePath) {
     .map((row) => row.slice(0, 20));
 }
 
+async function readDocPreview(filePath) {
+  const { stdout } = await execFileAsync("antiword", ["-m", "UTF-8.txt", filePath], {
+    maxBuffer: 1024 * 1024
+  });
+  return stdout.slice(0, 100000);
+}
+
 app.get("/api/preview/:filename", async (req, res) => {
   const filename = path.basename(req.params.filename || "");
   const filePath = uploadedFilePath(filename);
@@ -478,6 +488,17 @@ app.get("/api/preview/:filename", async (req, res) => {
         name: filename,
         html: result.value.slice(0, 500000),
         warnings: result.messages.map((message) => message.message)
+      });
+      return;
+    }
+
+    if (ext === ".doc") {
+      const text = await readDocPreview(filePath);
+      res.json({
+        kind: "text",
+        name: filename,
+        text: text || "没有可预览文本。",
+        warnings: []
       });
       return;
     }

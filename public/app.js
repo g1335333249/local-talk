@@ -851,7 +851,7 @@ function fileExtension(file) {
 }
 
 function canPreviewFile(file) {
-  return [".pdf", ".docx", ".xls", ".xlsx", ".txt", ".md", ".csv", ".log"].includes(fileExtension(file));
+  return [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt", ".md", ".csv", ".log"].includes(fileExtension(file));
 }
 
 function uploadFilenameFromUrl(url) {

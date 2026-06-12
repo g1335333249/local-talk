@@ -2,6 +2,8 @@ FROM node:24-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache antiword
+
 COPY package*.json ./
 RUN npm install --omit=dev
 
