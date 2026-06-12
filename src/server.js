@@ -8,6 +8,7 @@ const express = require("express");
 const mammoth = require("mammoth");
 const multer = require("multer");
 const readXlsxFile = require("read-excel-file/node");
+const XLSX = require("xlsx");
 const { Server } = require("socket.io");
 
 const app = express();
@@ -113,12 +114,28 @@ const insertGroupMemberStmt = db.prepare(`
 `);
 const deleteOldMessagesStmt = db.prepare("DELETE FROM messages WHERE created_at < ?");
 
+function normalizeUploadFilename(name) {
+  const rawName = String(name || "file");
+  const decoded = Buffer.from(rawName, "latin1").toString("utf8");
+  if (decoded !== rawName && !decoded.includes("�") && /[\u4e00-\u9fff]/.test(decoded)) {
+    return decoded;
+  }
+  return rawName;
+}
+
 const storage = multer.diskStorage({
   destination: uploadsDir,
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext).replace(/[^\w.-]+/g, "_");
-    cb(null, `${Date.now()}-${crypto.randomUUID()}-${base}${ext}`);
+    const originalName = normalizeUploadFilename(file.originalname);
+    file.safeOriginalName = originalName;
+    const ext = path.extname(originalName);
+    const base = path.basename(originalName, ext);
+    const safeBase = base
+      .normalize("NFC")
+      .replace(/[^\p{L}\p{N}._-]+/gu, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80) || "file";
+    cb(null, `${Date.now()}-${crypto.randomUUID()}-${safeBase}${ext}`);
   }
 });
 
@@ -299,7 +316,16 @@ function addMessage(message) {
   );
 }
 
+function normalizeMessageFile(file) {
+  if (!file || typeof file !== "object") return null;
+  return {
+    ...file,
+    originalName: normalizeUploadFilename(file.originalName || "文件")
+  };
+}
+
 function rowToMessage(row) {
+  const file = row.file_json ? JSON.parse(row.file_json) : null;
   return {
     id: row.id,
     type: row.type,
@@ -307,7 +333,7 @@ function rowToMessage(row) {
     toIp: row.to_ip,
     text: row.text || "",
     quote: row.quote_json ? JSON.parse(row.quote_json) : null,
-    file: row.file_json ? JSON.parse(row.file_json) : null,
+    file: normalizeMessageFile(file),
     forwarded: Boolean(row.forwarded),
     forwardedFromIp: row.forwarded_from_ip || null,
     createdAt: row.created_at
@@ -350,7 +376,7 @@ function messageSummary(message) {
 
   if (message.file && typeof message.file === "object") {
     summary.file = {
-      originalName: String(message.file.originalName || "文件").slice(0, 200),
+      originalName: normalizeUploadFilename(message.file.originalName || "文件").slice(0, 200),
       size: Number(message.file.size || 0),
       mimeType: String(message.file.mimeType || "").slice(0, 120),
       url: String(message.file.url || "").slice(0, 500)
@@ -400,6 +426,23 @@ function uploadedFilePath(filename) {
   return filePath;
 }
 
+function readExcelPreview(filePath) {
+  const workbook = XLSX.readFile(filePath, {
+    cellDates: true,
+    sheetRows: 50
+  });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) return [];
+  return XLSX.utils
+    .sheet_to_json(workbook.Sheets[firstSheetName], {
+      header: 1,
+      raw: false,
+      blankrows: false
+    })
+    .slice(0, 50)
+    .map((row) => row.slice(0, 20));
+}
+
 app.get("/api/preview/:filename", async (req, res) => {
   const filename = path.basename(req.params.filename || "");
   const filePath = uploadedFilePath(filename);
@@ -433,11 +476,27 @@ app.get("/api/preview/:filename", async (req, res) => {
     }
 
     if (ext === ".xlsx") {
-      const rows = await readXlsxFile(filePath);
+      let rows;
+      try {
+        rows = await readXlsxFile(filePath);
+        rows = rows.slice(0, 50).map((row) => row.slice(0, 20));
+      } catch (error) {
+        rows = readExcelPreview(filePath);
+      }
       res.json({
         kind: "spreadsheet",
         name: filename,
-        rows: rows.slice(0, 50).map((row) => row.slice(0, 20))
+        rows
+      });
+      return;
+    }
+
+    if (ext === ".xls") {
+      const rows = readExcelPreview(filePath);
+      res.json({
+        kind: "spreadsheet",
+        name: filename,
+        rows
       });
       return;
     }
@@ -476,7 +535,7 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
     createdAt: new Date().toISOString(),
     quote: parseQuote(req.body.quote),
     file: {
-      originalName: req.file.originalname,
+      originalName: req.file.safeOriginalName || normalizeUploadFilename(req.file.originalname),
       size: req.file.size,
       mimeType: req.file.mimetype,
       url: `/uploads/${encodeURIComponent(req.file.filename)}`

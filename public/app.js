@@ -809,7 +809,7 @@ function fileExtension(file) {
 }
 
 function canPreviewFile(file) {
-  return [".pdf", ".docx", ".xlsx", ".txt", ".md", ".csv", ".log"].includes(fileExtension(file));
+  return [".pdf", ".docx", ".xls", ".xlsx", ".txt", ".md", ".csv", ".log"].includes(fileExtension(file));
 }
 
 function uploadFilenameFromUrl(url) {
@@ -832,7 +832,7 @@ async function openFilePreview(file) {
   }
 
   const preview = await response.json();
-  els.filePreviewTitle.textContent = preview.name || file.originalName || "文件预览";
+  els.filePreviewTitle.textContent = file.originalName || preview.name || "文件预览";
   els.filePreviewBody.replaceChildren();
 
   if (preview.kind === "pdf") {
