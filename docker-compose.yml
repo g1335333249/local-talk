@@ -1,0 +1,15 @@
+services:
+  local-talk:
+    build: .
+    container_name: local-talk
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - TRUST_PROXY=true
+      - MAX_UPLOAD_MB=200
+      - MESSAGE_RETENTION_DAYS=7
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data

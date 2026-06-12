@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Talk</title>
+    <link id="favicon" rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%23166a6a"/><path d="M16 19h32v20H30L21 47v-8h-5z" fill="white"/></svg>' />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <button id="sidebarOverlay" class="sidebar-overlay" type="button" aria-label="关闭联系人列表" hidden></button>
+      <aside class="sidebar">
+        <section class="identity">
+          <div class="identity-row">
+            <div class="avatar" id="myAvatar">IP</div>
+            <div class="identity-main">
+              <p class="label">当前用户</p>
+              <strong id="myDisplay">连接中</strong>
+              <span id="myIp"></span>
+            </div>
+            <button id="settingsButton" class="menu-button" type="button" title="设置" aria-expanded="false">⋯</button>
+          </div>
+          <div id="settingsMenu" class="settings-menu" hidden>
+            <form id="nicknameForm" class="nickname-form">
+              <label for="nicknameInput">昵称</label>
+              <div class="inline-form">
+                <input id="nicknameInput" maxlength="32" placeholder="设置昵称" autocomplete="off" />
+                <button type="submit" title="保存昵称">保存</button>
+              </div>
+            </form>
+            <button id="notifyButton" class="ghost-button" type="button">开启浏览器通知</button>
+            <p id="notifyStatus" class="hint">收到新消息时可弹出系统通知</p>
+          </div>
+        </section>
+
+        <section class="user-panel">
+          <div class="panel-title">
+            <h1>在线用户</h1>
+            <div class="panel-actions">
+              <button id="createGroupButton" type="button" title="新建群聊">＋</button>
+              <span id="onlineCount">0</span>
+            </div>
+          </div>
+          <div id="userList" class="user-list"></div>
+        </section>
+      </aside>
+
+      <section class="chat">
+        <header class="chat-header">
+          <button id="sidebarToggle" class="contacts-button" type="button" title="联系人" aria-expanded="false">☰</button>
+          <div>
+            <p class="label">私聊</p>
+            <h2 id="peerName">选择一个在线用户</h2>
+          </div>
+          <div class="chat-header-meta">
+            <span id="peerIp" class="peer-ip"></span>
+            <span id="pasteHint" class="paste-hint" hidden>支持粘贴截图发送</span>
+          </div>
+        </header>
+        <div id="incomingBanner" class="incoming-banner" hidden></div>
+
+        <div id="emptyState" class="empty-state">
+          从左侧选择一个在线用户开始聊天。
+        </div>
+        <div id="incomingNotice" class="incoming-notice" hidden></div>
+        <div id="messageList" class="message-list" hidden></div>
+
+        <form id="composer" class="composer" hidden>
+          <div id="replyBar" class="reply-bar" hidden>
+            <div>
+              <span>回复</span>
+              <strong id="replyTitle"></strong>
+            </div>
+            <button id="cancelReply" type="button" title="取消回复">×</button>
+          </div>
+          <div class="toolbar">
+            <label class="icon-button" title="发送文件">
+              <input id="fileInput" type="file" hidden />
+              <span>↥</span>
+            </label>
+            <button id="screenshotButton" type="button" class="icon-button" title="截屏">▣</button>
+          </div>
+          <textarea id="messageInput" rows="2" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <button type="submit" class="send-button">发送</button>
+        </form>
+      </section>
+    </main>
+
+    <div id="imageModal" class="image-modal" hidden>
+      <div class="image-modal-toolbar">
+        <strong id="imageModalTitle">图片预览</strong>
+        <div class="image-modal-actions">
+          <button id="imageZoomOut" type="button" title="缩小">−</button>
+          <button id="imageZoomReset" type="button" title="还原">100%</button>
+          <button id="imageZoomIn" type="button" title="放大">+</button>
+          <a id="imageSave" href="#" download title="保存">保存</a>
+          <button id="imageClose" type="button" title="关闭">×</button>
+        </div>
+      </div>
+      <div id="imageStage" class="image-stage">
+        <img id="imagePreview" alt="图片预览" />
+      </div>
+    </div>
+
+    <div id="forwardModal" class="forward-modal" hidden>
+      <div class="forward-dialog">
+        <header>
+          <strong>转发给</strong>
+          <button id="forwardClose" type="button" title="关闭">×</button>
+        </header>
+        <div id="forwardPreview" class="forward-preview"></div>
+        <div id="forwardUserList" class="forward-user-list"></div>
+      </div>
+    </div>
+
+    <div id="groupModal" class="forward-modal" hidden>
+      <form id="groupForm" class="forward-dialog">
+        <header>
+          <strong>新建群聊</strong>
+          <button id="groupClose" type="button" title="关闭">×</button>
+        </header>
+        <div class="group-form-body">
+          <label>
+            <span>群名称</span>
+            <input id="groupNameInput" maxlength="40" placeholder="例如：项目讨论" autocomplete="off" />
+          </label>
+          <p class="hint">选择至少 1 个在线用户，当前用户会自动加入。</p>
+        </div>
+        <div id="groupMemberList" class="forward-user-list"></div>
+        <footer class="group-form-footer">
+          <button type="submit" class="send-button">创建</button>
+        </footer>
+      </form>
+    </div>
+
+    <div id="closeGuardModal" class="forward-modal" hidden>
+      <div class="close-guard-dialog">
+        <strong>保持当前聊天页打开</strong>
+        <p>已拦截关闭页签快捷键。为了避免错过内网消息，请保持此页面打开。</p>
+        <button id="closeGuardConfirm" type="button" class="send-button">知道了</button>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
