@@ -910,20 +910,75 @@ async function openFilePreview(file) {
     const frame = document.createElement("iframe");
     frame.className = "doc-preview-frame";
     frame.title = preview.name || "Word 预览";
-    frame.setAttribute("sandbox", "");
+    frame.setAttribute("sandbox", "allow-scripts");
     frame.srcdoc = `<!doctype html>
       <html>
         <head>
           <meta charset="utf-8">
           <style>
+            html { scroll-behavior: smooth; }
             body { margin: 0; padding: 24px; color: #17202a; font: 14px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
             img { max-width: 100%; height: auto; }
             table { border-collapse: collapse; max-width: 100%; }
             td, th { border: 1px solid #d8e0e8; padding: 6px 8px; vertical-align: top; }
             p { margin: 0 0 12px; }
+            a[id], [id] { scroll-margin-top: 18px; }
           </style>
         </head>
-        <body>${preview.html || "<p>没有可预览内容。</p>"}</body>
+        <body>
+          ${preview.html || "<p>没有可预览内容。</p>"}
+          <script>
+            (() => {
+              const slug = (value) => String(value || "")
+                .trim()
+                .toLowerCase()
+                .replace(/\\s+/g, "-")
+                .replace(/[^\\w\\u4e00-\\u9fff-]/g, "");
+              const comparable = (value) => String(value || "")
+                .trim()
+                .replace(/^\\d+(?:\\.\\d+)*\\s*/, "")
+                .replace(/\\s+/g, "");
+
+              const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")];
+              for (const heading of headings) {
+                if (!heading.id) {
+                  const id = slug(heading.textContent);
+                  if (id) heading.id = id;
+                }
+              }
+
+              function findTarget(link) {
+                const href = link.getAttribute("href") || "";
+                let hash = "";
+                try {
+                  hash = href.startsWith("#") ? href.slice(1) : new URL(href, location.href).hash.slice(1);
+                } catch (error) {
+                  hash = "";
+                }
+                if (hash) {
+                  const id = decodeURIComponent(hash);
+                  const direct = document.getElementById(id) || document.getElementById(hash);
+                  if (direct) return direct;
+                }
+
+                const text = comparable(link.textContent);
+                return headings.find((heading) => comparable(heading.textContent) === text) ||
+                  headings.find((heading) => comparable(heading.textContent).includes(text));
+              }
+
+              document.addEventListener("click", (event) => {
+                const link = event.target.closest("a[href]");
+                if (!link) return;
+                const href = link.getAttribute("href") || "";
+                if (!href.includes("#")) return;
+                const target = findTarget(link);
+                if (!target) return;
+                event.preventDefault();
+                target.scrollIntoView({ block: "start", behavior: "smooth" });
+              });
+            })();
+          </script>
+        </body>
       </html>`;
     els.filePreviewBody.append(frame);
     return;
