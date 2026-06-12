@@ -53,6 +53,7 @@ const els = {
   formatItalic: document.querySelector("#formatItalic"),
   formatCode: document.querySelector("#formatCode"),
   formatLink: document.querySelector("#formatLink"),
+  markdownDraftPreview: document.querySelector("#markdownDraftPreview"),
   messageInput: document.querySelector("#messageInput"),
   fileInput: document.querySelector("#fileInput"),
   screenshotButton: document.querySelector("#screenshotButton"),
@@ -725,6 +726,15 @@ function renderMarkdown(text) {
   return wrapper;
 }
 
+function renderMarkdownDraft() {
+  const text = els.messageInput.value.trim();
+  els.markdownDraftPreview.replaceChildren();
+  els.markdownDraftPreview.hidden = text.length === 0;
+  if (text.length > 0) {
+    els.markdownDraftPreview.append(renderMarkdown(text));
+  }
+}
+
 function createQuoteBlock(quote) {
   const block = document.createElement("div");
   block.className = "quote-block";
@@ -1095,6 +1105,7 @@ function insertMarkdown(prefix, suffix = prefix, placeholder = "文本") {
   const cursorEnd = cursorStart + selected.length;
   input.focus();
   input.setSelectionRange(cursorStart, cursorEnd);
+  renderMarkdownDraft();
 }
 
 function insertMarkdownLink() {
@@ -1106,6 +1117,7 @@ function insertMarkdownLink() {
   input.value = `${input.value.slice(0, start)}${snippet}${input.value.slice(end)}`;
   input.focus();
   input.setSelectionRange(start + snippet.length - 1, start + snippet.length - 1);
+  renderMarkdownDraft();
 }
 
 async function captureScreenshot() {
@@ -1278,6 +1290,7 @@ els.composer.addEventListener("submit", async (event) => {
   if ((!text && attachments.length === 0) || !state.selectedIp) return;
   const quote = state.replyTo;
   els.messageInput.value = "";
+  renderMarkdownDraft();
   clearPendingAttachments();
   clearReply();
 
@@ -1297,6 +1310,8 @@ els.messageInput.addEventListener("keydown", (event) => {
     els.composer.requestSubmit();
   }
 });
+
+els.messageInput.addEventListener("input", renderMarkdownDraft);
 
 els.messageInput.addEventListener("paste", uploadPastedImages);
 
