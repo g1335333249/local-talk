@@ -465,11 +465,18 @@ app.get("/api/preview/:filename", async (req, res) => {
     }
 
     if (ext === ".docx") {
-      const result = await mammoth.extractRawText({ path: filePath });
+      const result = await mammoth.convertToHtml(
+        { path: filePath },
+        {
+          convertImage: mammoth.images.imgElement(async (image) => ({
+            src: await image.readAsBase64String().then((base64) => `data:${image.contentType};base64,${base64}`)
+          }))
+        }
+      );
       res.json({
-        kind: "text",
+        kind: "html",
         name: filename,
-        text: result.value.slice(0, 100000),
+        html: result.value.slice(0, 500000),
         warnings: result.messages.map((message) => message.message)
       });
       return;

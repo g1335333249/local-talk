@@ -887,6 +887,29 @@ async function openFilePreview(file) {
     return;
   }
 
+  if (preview.kind === "html") {
+    const frame = document.createElement("iframe");
+    frame.className = "doc-preview-frame";
+    frame.title = preview.name || "Word 预览";
+    frame.setAttribute("sandbox", "");
+    frame.srcdoc = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { margin: 0; padding: 24px; color: #17202a; font: 14px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+            img { max-width: 100%; height: auto; }
+            table { border-collapse: collapse; max-width: 100%; }
+            td, th { border: 1px solid #d8e0e8; padding: 6px 8px; vertical-align: top; }
+            p { margin: 0 0 12px; }
+          </style>
+        </head>
+        <body>${preview.html || "<p>没有可预览内容。</p>"}</body>
+      </html>`;
+    els.filePreviewBody.append(frame);
+    return;
+  }
+
   const pre = document.createElement("pre");
   pre.textContent = preview.text || "没有可预览文本。";
   els.filePreviewBody.append(pre);
