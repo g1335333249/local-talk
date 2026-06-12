@@ -21,6 +21,16 @@ Local Talk 是一个面向可信内网环境的网页版聊天工具。用户按
 - 消息默认保留 7 天并自动清理
 - Docker / Docker Compose 部署
 
+## 界面预览
+
+主界面：
+
+![Local Talk 主界面](docs/images/main.jpg)
+
+新建群聊：
+
+![新建群聊](docs/images/create-group.jpg)
+
 ## 技术栈
 
 - Node.js 24
