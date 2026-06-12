@@ -49,6 +49,10 @@ const els = {
   replyTitle: document.querySelector("#replyTitle"),
   cancelReply: document.querySelector("#cancelReply"),
   attachmentTray: document.querySelector("#attachmentTray"),
+  formatBold: document.querySelector("#formatBold"),
+  formatItalic: document.querySelector("#formatItalic"),
+  formatCode: document.querySelector("#formatCode"),
+  formatLink: document.querySelector("#formatLink"),
   messageInput: document.querySelector("#messageInput"),
   fileInput: document.querySelector("#fileInput"),
   screenshotButton: document.querySelector("#screenshotButton"),
@@ -527,9 +531,7 @@ function renderMessages() {
     }
 
     if (message.type === "text") {
-      const text = document.createElement("span");
-      text.textContent = message.text;
-      bubble.append(text);
+      bubble.append(renderMarkdown(message.text));
     } else if (message.type === "screenshot") {
       const button = document.createElement("button");
       button.className = "image-message-button";
@@ -589,6 +591,138 @@ function renderMessages() {
   }
 
   scrollMessagesToBottom();
+}
+
+function appendInlineMarkdown(parent, text) {
+  const pattern = /(`([^`]+)`)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parent.append(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+
+    if (match[2]) {
+      const code = document.createElement("code");
+      code.textContent = match[2];
+      parent.append(code);
+    } else if (match[4]) {
+      const strong = document.createElement("strong");
+      strong.textContent = match[4];
+      parent.append(strong);
+    } else if (match[6]) {
+      const em = document.createElement("em");
+      em.textContent = match[6];
+      parent.append(em);
+    } else if (match[8] && match[9]) {
+      const link = document.createElement("a");
+      link.textContent = match[8];
+      link.href = safeMarkdownUrl(match[9]);
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      parent.append(link);
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parent.append(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
+function safeMarkdownUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.href;
+    }
+  } catch (error) {
+    return "#";
+  }
+  return "#";
+}
+
+function appendMarkdownLine(parent, line) {
+  const heading = line.match(/^(#{1,3})\s+(.+)$/);
+  if (heading) {
+    const level = String(Math.min(3, heading[1].length + 3));
+    const title = document.createElement(`h${level}`);
+    appendInlineMarkdown(title, heading[2]);
+    parent.append(title);
+    return;
+  }
+
+  const quote = line.match(/^>\s?(.+)$/);
+  if (quote) {
+    const blockquote = document.createElement("blockquote");
+    appendInlineMarkdown(blockquote, quote[1]);
+    parent.append(blockquote);
+    return;
+  }
+
+  const listItem = line.match(/^[-*]\s+(.+)$/);
+  if (listItem) {
+    const item = document.createElement("div");
+    item.className = "markdown-list-item";
+    const bullet = document.createElement("span");
+    bullet.textContent = "•";
+    const body = document.createElement("span");
+    appendInlineMarkdown(body, listItem[1]);
+    item.append(bullet, body);
+    parent.append(item);
+    return;
+  }
+
+  const paragraph = document.createElement("p");
+  appendInlineMarkdown(paragraph, line);
+  parent.append(paragraph);
+}
+
+function renderMarkdown(text) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "markdown-body";
+  const lines = String(text || "").split("\n");
+  let inCode = false;
+  let codeLines = [];
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inCode) {
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = codeLines.join("\n");
+        pre.append(code);
+        wrapper.append(pre);
+        codeLines = [];
+      }
+      inCode = !inCode;
+      continue;
+    }
+
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+
+    if (line.trim() === "") {
+      wrapper.append(document.createElement("br"));
+      continue;
+    }
+
+    appendMarkdownLine(wrapper, line);
+  }
+
+  if (codeLines.length > 0) {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent = codeLines.join("\n");
+    pre.append(code);
+    wrapper.append(pre);
+  }
+
+  return wrapper;
 }
 
 function createQuoteBlock(quote) {
@@ -950,6 +1084,30 @@ function sendTextMessage(text, quote = state.replyTo) {
   });
 }
 
+function insertMarkdown(prefix, suffix = prefix, placeholder = "文本") {
+  const input = els.messageInput;
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const selected = input.value.slice(start, end) || placeholder;
+  const next = `${input.value.slice(0, start)}${prefix}${selected}${suffix}${input.value.slice(end)}`;
+  input.value = next;
+  const cursorStart = start + prefix.length;
+  const cursorEnd = cursorStart + selected.length;
+  input.focus();
+  input.setSelectionRange(cursorStart, cursorEnd);
+}
+
+function insertMarkdownLink() {
+  const input = els.messageInput;
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const selected = input.value.slice(start, end) || "链接文本";
+  const snippet = `[${selected}](https://)`;
+  input.value = `${input.value.slice(0, start)}${snippet}${input.value.slice(end)}`;
+  input.focus();
+  input.setSelectionRange(start + snippet.length - 1, start + snippet.length - 1);
+}
+
 async function captureScreenshot() {
   if (!state.selectedIp) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
@@ -1104,6 +1262,14 @@ els.closeGuardModal.addEventListener("click", (event) => {
 });
 
 els.cancelReply.addEventListener("click", clearReply);
+
+els.formatBold.addEventListener("click", () => insertMarkdown("**", "**", "加粗文本"));
+
+els.formatItalic.addEventListener("click", () => insertMarkdown("*", "*", "斜体文本"));
+
+els.formatCode.addEventListener("click", () => insertMarkdown("`", "`", "code"));
+
+els.formatLink.addEventListener("click", insertMarkdownLink);
 
 els.composer.addEventListener("submit", async (event) => {
   event.preventDefault();
